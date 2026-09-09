@@ -239,7 +239,7 @@ function renderCharts(data) {
         tension: 0.3,
       }],
     },
-    options: { responsive: true },
+    options: { ...chartBase, plugins: { legend: { display: false } } },
   });
 }
 
