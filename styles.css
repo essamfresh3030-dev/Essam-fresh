@@ -40,7 +40,8 @@ h1 { margin: 0; font-size: 1.7rem; }
 .meta span, .kpis .kpi, .card, .filters label {
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
 }
-.meta span { padding: 8px 12px; color: var(--muted); }
+.meta span, .meta .sheet-pick { padding: 8px 12px; color: var(--muted); }
+.meta .sheet-pick { display: flex; align-items: center; gap: 8px; }
 .kpi { padding: 14px 16px; min-width: 160px; }
 .kpi .label { color: var(--muted); font-size: .85rem; }
 .kpi .value { font-size: 1.4rem; font-weight: 800; }

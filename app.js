@@ -7,8 +7,10 @@ const catCol = document.getElementById("catCol");
 const valCol = document.getElementById("valCol");
 const dateCol = document.getElementById("dateCol");
 const search = document.getElementById("search");
+const headerRowSelect = document.getElementById("headerRowSelect");
 
 let workbook = null;
+let rawGrid = [];
 let rows = [];
 let headers = [];
 let charts = { bar: null, pie: null, line: null };
@@ -50,7 +52,8 @@ function loadFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-sheetSelect.addEventListener("change", () => useSheet(sheetSelect.value));
+sheetSelect.addEventListener("change", () => useSheet(sheetSelect.value, true));
+headerRowSelect.addEventListener("change", applyHeaderRow);
 [catCol, valCol, dateCol, search].forEach((el) =>
   el.addEventListener("input", renderAll)
 );
