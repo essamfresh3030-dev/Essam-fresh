@@ -93,7 +93,38 @@
             الصفوف غير الصالحة فقط
           </label>
         </div>
-        <p class="hint" id="tableHint"></p>
+        <div class="rules-box">
+          <strong>قواعد التحقق</strong>
+          <div class="rules-row">
+            <label>العمود
+              <select id="ruleCol"></select>
+            </label>
+            <label>النوع
+              <select id="ruleType">
+                <option value="auto">تلقائي</option>
+                <option value="none">بدون</option>
+                <option value="required">مطلوب</option>
+                <option value="number">رقم</option>
+                <option value="integer">عدد صحيح</option>
+                <option value="date">تاريخ</option>
+                <option value="unique">قيمة فريدة</option>
+                <option value="list">قائمة قيم</option>
+              </select>
+            </label>
+            <label>الحد الأدنى
+              <input id="ruleMin" type="text" placeholder="اختياري" />
+            </label>
+            <label>الحد الأقصى
+              <input id="ruleMax" type="text" placeholder="اختياري" />
+            </label>
+            <label>القائمة (مفصولة بفاصلة)
+              <input id="ruleList" type="text" placeholder="مثال: نقدي،آجل" />
+            </label>
+            <button type="button" id="applyRule" class="upload-btn">تطبيق القاعدة</button>
+            <button type="button" id="clearRules" class="ghost-btn">مسح القواعد</button>
+          </div>
+          <div id="rulesList" class="rules-list"></div>
+        </div>
         <div class="validation-bar" id="validationBar"></div>
         <div class="table-wrap">
           <table id="dataTable"></table>

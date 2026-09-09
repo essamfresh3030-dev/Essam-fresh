@@ -59,6 +59,12 @@ headerRowSelect.addEventListener("change", applyHeaderRow);
 );
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
 document.getElementById("onlySelectedCols").addEventListener("change", renderAll);
+document.getElementById("applyRule").addEventListener("click", applyCurrentRule);
+document.getElementById("clearRules").addEventListener("click", () => {
+  colRules = {};
+  renderRulesList();
+  renderAll();
+});
 
 function escapeHtml(v) {
   return String(v ?? "")
@@ -123,6 +129,7 @@ function applyHeaderRow() {
   document.getElementById("rowCount").textContent = `${rows.length} صف`;
   document.getElementById("colCount").textContent = `${headers.length} عمود`;
   fillSelects();
+  fillRuleCol();
   renderAll();
 }
 
@@ -284,6 +291,40 @@ function renderCharts(data) {
   });
 }
 
+function fillRuleCol() {
+  const sel = document.getElementById("ruleCol");
+  sel.innerHTML = headers.map((h) => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
+}
+
+function applyCurrentRule() {
+  const col = document.getElementById("ruleCol").value;
+  if (!col) return;
+  colRules[col] = {
+    type: document.getElementById("ruleType").value,
+    min: document.getElementById("ruleMin").value.trim(),
+    max: document.getElementById("ruleMax").value.trim(),
+    list: document.getElementById("ruleList").value.trim(),
+  };
+  renderRulesList();
+  renderAll();
+}
+
+function renderRulesList() {
+  const box = document.getElementById("rulesList");
+  const entries = Object.entries(colRules);
+  box.innerHTML = entries.length
+    ? entries.map(([col, r]) => `<span class="rule-tag">${escapeHtml(col)}: ${escapeHtml(r.type)}${r.min ? " ≥ " + escapeHtml(r.min) : ""}${r.max ? " ≤ " + escapeHtml(r.max) : ""}</span>`).join("")
+    : '<span class="rule-tag">لا توجد قواعد مخصصة — يُستخدم التحقق التلقائي</span>';
+}
+
+function autoRule(h) {
+  if (colRules[h]) return colRules[h];
+  if (h === valCol.value) return { type: "number", min: "", max: "", list: "" };
+  if (h === dateCol.value) return { type: "date", min: "", max: "", list: "" };
+  if (h === catCol.value) return { type: "required", min: "", max: "", list: "" };
+  return { type: "auto", min: "", max: "", list: "" };
+}
+
 function isEmpty(v) {
   return v === "" || v == null || (typeof v === "string" && v.trim() === "");
 }
@@ -304,46 +345,106 @@ function rowKey(r) {
   return headers.map((h) => String(r[h] ?? "")).join("||");
 }
 
+function inList(v, listStr) {
+  const allowed = listStr.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+  if (!allowed.length) return true;
+  return allowed.includes(String(v).trim());
+}
+
+function inRange(v, min, max, asDate) {
+  if (asDate) {
+    const d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d)) return false;
+    if (min && d < new Date(min)) return false;
+    if (max && d > new Date(max)) return false;
+    return true;
+  }
+  const n = num(v);
+  if (min !== "" && n < Number(min)) return false;
+  if (max !== "" && n > Number(max)) return false;
+  return true;
+}
+
 function validateRows(data) {
-  const numericCols = headers.filter(isNumericCol);
-  const dateCols = headers.filter(isDateCol);
-  const counts = new Map();
-  data.forEach((r) => counts.set(rowKey(r), (counts.get(rowKey(r)) || 0) + 1));
+  const cols = displayCols();
+  const uniqueCols = cols.filter((h) => autoRule(h).type === "unique");
+  const uniqueMaps = {};
+  uniqueCols.forEach((h) => {
+    const m = new Map();
+    data.forEach((r) => {
+      const k = String(r[h] ?? "");
+      m.set(k, (m.get(k) || 0) + 1);
+    });
+    uniqueMaps[h] = m;
+  });
+  const rowCounts = new Map();
+  data.forEach((r) => rowCounts.set(rowKey(r), (rowCounts.get(rowKey(r)) || 0) + 1));
 
   let emptyCells = 0;
   let badNums = 0;
   let badDates = 0;
   let dups = 0;
+  let badList = 0;
+  let badRange = 0;
   const issues = data.map((r) => {
     const cells = {};
     let rowInvalid = false;
-    headers.forEach((h) => {
+    cols.forEach((h) => {
+      const rule = autoRule(h);
       const v = r[h];
+      const type = rule.type === "auto" ? (isNumericCol(h) ? "number" : isDateCol(h) ? "date" : "none") : rule.type;
+      if (type === "none") return;
       if (isEmpty(v)) {
-        cells[h] = "empty";
-        emptyCells += 1;
-        rowInvalid = true;
+        if (type === "required" || type === "number" || type === "integer" || type === "date" || type === "unique" || type === "list") {
+          cells[h] = "empty";
+          emptyCells += 1;
+          rowInvalid = true;
+        }
         return;
       }
-      if (numericCols.includes(h) && !looksNumber(v)) {
+      if ((type === "number" || type === "integer") && !looksNumber(v)) {
         cells[h] = "bad-num";
         badNums += 1;
         rowInvalid = true;
+        return;
       }
-      if (dateCols.includes(h) && !looksDate(v)) {
+      if (type === "integer" && !Number.isInteger(Number(String(v).replace(/,/g, "")))) {
+        cells[h] = "bad-num";
+        badNums += 1;
+        rowInvalid = true;
+        return;
+      }
+      if (type === "date" && !looksDate(v)) {
         cells[h] = "bad-date";
         badDates += 1;
         rowInvalid = true;
+        return;
+      }
+      if ((type === "number" || type === "integer" || type === "date") && !inRange(v, rule.min, rule.max, type === "date")) {
+        cells[h] = "bad-range";
+        badRange += 1;
+        rowInvalid = true;
+        return;
+      }
+      if (type === "list" && !inList(v, rule.list)) {
+        cells[h] = "bad-list";
+        badList += 1;
+        rowInvalid = true;
+        return;
+      }
+      if (type === "unique" && uniqueMaps[h] && uniqueMaps[h].get(String(v)) > 1) {
+        cells[h] = "bad-unique";
+        rowInvalid = true;
       }
     });
-    const dup = counts.get(rowKey(r)) > 1;
+    const dup = rowCounts.get(rowKey(r)) > 1;
     if (dup) {
       dups += 1;
       rowInvalid = true;
     }
     return { cells, dup, rowInvalid };
   });
-  return { issues, emptyCells, badNums, badDates, dups };
+  return { issues, emptyCells, badNums, badDates, dups, badList, badRange };
 }
 
 function renderValidation(stats, invalidCount, total) {

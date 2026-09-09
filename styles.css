@@ -67,7 +67,17 @@ select, input {
 .chart-box.pie { height: clamp(140px, 22vh, 200px); }
 .chart-box.line { height: clamp(120px, 18vh, 180px); }
 .chart-box canvas { max-width: 100%; }
-.hint { margin: 0 0 8px; color: var(--muted); font-size: .85rem; }
+.data-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rules-box { margin: 8px 0 12px; padding: 10px; border: 1px dashed var(--line); border-radius: 12px; }
+.rules-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-top: 8px; }
+.rules-row label { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); min-width: 140px; flex: 1; }
+.ghost-btn {
+  background: transparent; color: var(--text); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 18px; cursor: pointer; font-weight: 700;
+}
+.rules-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rule-tag { background: #0e1626; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: .8rem; }
+td.bad-list, td.bad-range, td.bad-unique { background: rgba(255, 90, 90, .22); }
 th.active-col { color: var(--accent); }
 .inline-check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; }
 .validation-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
