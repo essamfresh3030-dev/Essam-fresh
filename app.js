@@ -8,7 +8,6 @@ const valCol = document.getElementById("valCol");
 const dateCol = document.getElementById("dateCol");
 const search = document.getElementById("search");
 const headerRowSelect = document.getElementById("headerRowSelect");
-const catFilter = document.getElementById("catFilter");
 
 let workbook = null;
 let rawGrid = [];
@@ -56,10 +55,9 @@ function loadFile(file) {
 
 sheetSelect.addEventListener("change", () => useSheet(sheetSelect.value, true));
 headerRowSelect.addEventListener("change", applyHeaderRow);
-[catCol, valCol, dateCol, search, catFilter].forEach((el) =>
+[catCol, valCol, dateCol, search].forEach((el) =>
   el.addEventListener("input", renderAll)
 );
-catCol.addEventListener("change", fillCatFilter);
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
 document.getElementById("onlySelectedCols").addEventListener("change", renderAll);
 document.getElementById("applyRule").addEventListener("click", applyCurrentRule);
@@ -185,42 +183,18 @@ function fillSelects() {
   catCol.value = headers.includes(prev.cat) ? prev.cat : (cats[0] || headers[0] || "");
   valCol.value = headers.includes(prev.val) ? prev.val : (nums[0] || headers[0] || "");
   dateCol.value = headers.includes(prev.date) ? prev.date : (dates[0] || "");
-  fillCatFilter();
-}
-
-function fillCatFilter() {
-  const prev = catFilter.value;
-  const col = catCol.value;
-  const values = [...new Set(rows.map((r) => String(r[col] ?? "").trim()).filter((v) => v !== ""))].slice(0, 400);
-  catFilter.innerHTML = "";
-  const all = document.createElement("option");
-  all.value = "";
-  all.textContent = "الكل";
-  catFilter.appendChild(all);
-  values.forEach((v) => {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = v;
-    catFilter.appendChild(o);
-  });
-  catFilter.value = values.includes(prev) ? prev : "";
-}
-
-function filteredRows() {
-  const q = search.value.trim().toLowerCase();
-  const fv = catFilter.value;
-  const col = catCol.value;
-  return rows.filter((r) => {
-    if (fv && String(r[col] ?? "").trim() !== fv) return false;
-    if (!q) return true;
-    return headers.some((h) => String(r[h] ?? "").toLowerCase().includes(q));
-  });
 }
 
 function num(v) {
   if (typeof v === "number") return v;
   const n = parseFloat(String(v).replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
+}
+
+function filteredRows() {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((r) => headers.some((h) => String(r[h] ?? "").toLowerCase().includes(q)));
 }
 
 function groupSum(data, key, val) {
@@ -512,7 +486,7 @@ function renderTable(data) {
   renderRulesList();
 
   if (!cols.length) {
-    document.getElementById("dataTable").innerHTML = "<thead><tr><th>لا توجد أعمدة</th></tr></thead>";
+    document.getElementById("dataTable").innerHTML = "<tr><td>لا توجد أعمدة للعرض</td></tr>";
     return;
   }
   const thead = `<tr>${cols.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
@@ -531,7 +505,7 @@ function renderTable(data) {
         }).join("");
         return `<tr class="${issue.rowInvalid ? "invalid" : ""}">${tds}</tr>`;
       }).join("")
-    : `<tr><td colspan="${cols.length}">لا توجد صفوف بعد الفلتر — جرّب فلتر التصنيف = الكل أو ألغِ «غير الصالحة فقط»</td></tr>`;
+    : `<tr><td colspan="${cols.length}">لا توجد صفوف مطابقة للفلتر الحالي</td></tr>`;
   document.getElementById("dataTable").innerHTML = thead + tbody;
 }
 
