@@ -54,6 +54,7 @@ sheetSelect.addEventListener("change", () => useSheet(sheetSelect.value));
 [catCol, valCol, dateCol, search].forEach((el) =>
   el.addEventListener("input", renderAll)
 );
+document.getElementById("onlyInvalid").addEventListener("change", renderAll);
 
 function useSheet(name) {
   const sheet = workbook.Sheets[name];
@@ -186,11 +187,105 @@ function renderCharts(data) {
   });
 }
 
+function isEmpty(v) {
+  return v === "" || v == null || (typeof v === "string" && v.trim() === "");
+}
+
+function looksNumber(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return true;
+  return /^-?\d+(\.\d+)?$/.test(String(v).replace(/,/g, "").trim());
+}
+
+function looksDate(v) {
+  if (v instanceof Date && !isNaN(v)) return true;
+  const s = String(v).trim();
+  if (!s) return false;
+  return !isNaN(Date.parse(s));
+}
+
+function rowKey(r) {
+  return headers.map((h) => String(r[h] ?? "")).join("||");
+}
+
+function validateRows(data) {
+  const numericCols = headers.filter(isNumericCol);
+  const dateCols = headers.filter(isDateCol);
+  const counts = new Map();
+  data.forEach((r) => counts.set(rowKey(r), (counts.get(rowKey(r)) || 0) + 1));
+
+  let emptyCells = 0;
+  let badNums = 0;
+  let badDates = 0;
+  let dups = 0;
+  const issues = data.map((r) => {
+    const cells = {};
+    let rowInvalid = false;
+    headers.forEach((h) => {
+      const v = r[h];
+      if (isEmpty(v)) {
+        cells[h] = "empty";
+        emptyCells += 1;
+        rowInvalid = true;
+        return;
+      }
+      if (numericCols.includes(h) && !looksNumber(v)) {
+        cells[h] = "bad-num";
+        badNums += 1;
+        rowInvalid = true;
+      }
+      if (dateCols.includes(h) && !looksDate(v)) {
+        cells[h] = "bad-date";
+        badDates += 1;
+        rowInvalid = true;
+      }
+    });
+    const dup = counts.get(rowKey(r)) > 1;
+    if (dup) {
+      dups += 1;
+      rowInvalid = true;
+    }
+    return { cells, dup, rowInvalid };
+  });
+  return { issues, emptyCells, badNums, badDates, dups };
+}
+
+function renderValidation(stats, invalidCount, total) {
+  const ok = invalidCount === 0;
+  const chips = [
+    `<span class="vchip ${ok ? "ok" : "err"}">${ok ? "البيانات سليمة" : `${invalidCount} صف به مشاكل`} من ${total}</span>`,
+    `<span class="vchip ${stats.emptyCells ? "warn" : "ok"}">خلايا فارغة: ${stats.emptyCells}</span>`,
+    `<span class="vchip ${stats.badNums ? "err" : "ok"}">أرقام غير صالحة: ${stats.badNums}</span>`,
+    `<span class="vchip ${stats.badDates ? "err" : "ok"}">تواريخ غير صالحة: ${stats.badDates}</span>`,
+    `<span class="vchip ${stats.dups ? "warn" : "ok"}">صفوف مكررة: ${stats.dups}</span>`,
+  ];
+  document.getElementById("validationBar").innerHTML = chips.join("");
+}
+
 function renderTable(data) {
-  const show = data.slice(0, 200);
+  const { issues, emptyCells, badNums, badDates, dups } = validateRows(data);
+  const onlyInvalid = document.getElementById("onlyInvalid").checked;
+  const invalidCount = issues.filter((i) => i.rowInvalid).length;
+  renderValidation({ emptyCells, badNums, badDates, dups }, invalidCount, data.length);
+
   const thead = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
-  const tbody = show
-    .map((r) => `<tr>${headers.map((h) => `<td>${r[h] instanceof Date ? r[h].toLocaleDateString("ar-EG") : r[h]}</td>`).join("")}</tr>`)
+  let shown = 0;
+  const tbody = data
+    .map((r, idx) => {
+      const issue = issues[idx];
+      if (onlyInvalid && !issue.rowInvalid) return "";
+      if (shown >= 200) return "";
+      shown += 1;
+      const cls = issue.rowInvalid ? "invalid" : "";
+      const tds = headers
+        .map((h) => {
+          const kind = issue.cells[h] || (issue.dup ? "dup" : "");
+          const val = r[h] instanceof Date ? r[h].toLocaleDateString("ar-EG") : r[h];
+          const title = kind === "empty" ? "خلية فارغة" : kind === "bad-num" ? "قيمة رقمية غير صالحة" : kind === "bad-date" ? "تاريخ غير صالح" : issue.dup ? "صف مكرر" : "";
+          return `<td class="${kind}" title="${title}">${val ?? ""}</td>`;
+        })
+        .join("");
+      return `<tr class="${cls}">${tds}</tr>`;
+    })
     .join("");
   document.getElementById("dataTable").innerHTML = thead + tbody;
 }

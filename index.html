@@ -78,7 +78,14 @@
       </section>
 
       <section class="card">
-        <h2>البيانات</h2>
+        <div class="data-head">
+          <h2>البيانات</h2>
+          <label class="inline-check">
+            <input type="checkbox" id="onlyInvalid" />
+            عرض الصفوف غير الصالحة فقط
+          </label>
+        </div>
+        <div class="validation-bar" id="validationBar"></div>
         <div class="table-wrap">
           <table id="dataTable"></table>
         </div>
