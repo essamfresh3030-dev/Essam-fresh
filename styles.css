@@ -88,7 +88,19 @@ th.active-col { color: var(--accent); }
 .vchip.ok { color: var(--accent); border-color: #1e5a52; }
 .vchip.warn { color: var(--warn); border-color: #5a4420; }
 .vchip.err { color: #ff8b8b; border-color: #5a2424; }
-.table-wrap { overflow: auto; max-height: 420px; }
+.table-controls {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0;
+}
+.table-controls label {
+  display: grid; gap: 4px; font-size: .8rem; color: var(--muted); min-width: 130px; flex: 1;
+}
+.col-picker { margin: 8px 0; color: var(--muted); }
+.col-checks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.col-checks label { display: flex; gap: 6px; align-items: center; font-size: .85rem; }
+.pager { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+table.compact th, table.compact td { padding: 4px 6px; font-size: .85rem; }
+th.sortable { cursor: pointer; }
+.table-wrap { overflow: auto; max-height: min(60vh, 520px); }
 table { width: 100%; border-collapse: collapse; }
 th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: right; white-space: nowrap; }
 th { position: sticky; top: 0; background: #172238; z-index: 1; }

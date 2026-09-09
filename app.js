@@ -15,6 +15,9 @@ let rows = [];
 let headers = [];
 let charts = { bar: null, pie: null, line: null };
 let colRules = {};
+let hiddenCols = new Set();
+let tablePage = 1;
+let sortState = { col: "", dir: "asc" };
 
 dropzone.addEventListener("click", () => fileInput.click());
 ["dragover", "dragenter"].forEach((ev) => {
@@ -66,6 +69,21 @@ document.getElementById("clearRules").addEventListener("click", () => {
   renderRulesList();
   renderAll();
 });
+["sortCol", "sortDir", "colFilterCol", "colFilterVal", "pageSize", "hideEmptyCols", "compactTable"].forEach((id) => {
+  document.getElementById(id).addEventListener("input", () => {
+    tablePage = 1;
+    renderTableOnly();
+  });
+});
+document.getElementById("prevPage").addEventListener("click", () => {
+  tablePage = Math.max(1, tablePage - 1);
+  renderTableOnly();
+});
+document.getElementById("nextPage").addEventListener("click", () => {
+  tablePage += 1;
+  renderTableOnly();
+});
+document.getElementById("exportCsv").addEventListener("click", exportCsv);
 
 function escapeHtml(v) {
   return String(v ?? "")
@@ -129,8 +147,11 @@ function applyHeaderRow() {
   });
   document.getElementById("rowCount").textContent = `${rows.length} صف`;
   document.getElementById("colCount").textContent = `${headers.length} عمود`;
+  hiddenCols = new Set();
+  tablePage = 1;
   fillSelects();
   fillRuleCol();
+  fillTableControls();
   renderAll();
 }
 
@@ -239,11 +260,58 @@ const chartBase = {
   },
 };
 
-function displayCols() {
+function fillTableControls() {
+  const sortSel = document.getElementById("sortCol");
+  const filterSel = document.getElementById("colFilterCol");
+  const prevSort = sortSel.value;
+  const prevFilter = filterSel.value;
+  function fill(sel, extra) {
+    sel.innerHTML = "";
+    (extra || []).forEach(([v, l]) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = l;
+      sel.appendChild(o);
+    });
+    headers.forEach((h) => {
+      const o = document.createElement("option");
+      o.value = h;
+      o.textContent = h;
+      sel.appendChild(o);
+    });
+  }
+  fill(sortSel, [["", "بدون"]]);
+  fill(filterSel, [["", "كل الأعمدة"]]);
+  if (headers.includes(prevSort)) sortSel.value = prevSort;
+  if (headers.includes(prevFilter)) filterSel.value = prevFilter;
+  const box = document.getElementById("colChecks");
+  box.innerHTML = "";
+  headers.forEach((h) => {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !hiddenCols.has(h);
+    cb.addEventListener("change", () => {
+      if (cb.checked) hiddenCols.delete(h);
+      else hiddenCols.add(h);
+      tablePage = 1;
+      renderTableOnly();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(" " + h));
+    box.appendChild(lab);
+  });
+}
+
+function displayCols(data) {
   const selected = [catCol.value, valCol.value, dateCol.value].filter((h) => h && headers.includes(h));
   const unique = [...new Set(selected)];
-  if (document.getElementById("onlySelectedCols").checked && unique.length) return unique;
-  return headers;
+  let cols = document.getElementById("onlySelectedCols").checked && unique.length ? unique : headers.slice();
+  cols = cols.filter((h) => !hiddenCols.has(h));
+  if (document.getElementById("hideEmptyCols")?.checked && data) {
+    cols = cols.filter((h) => data.some((r) => !isEmpty(r[h])));
+  }
+  return cols.length ? cols : headers.slice(0, 1);
 }
 
 function formatCell(v) {
@@ -476,29 +544,63 @@ function renderValidation(stats, invalidCount, total) {
   document.getElementById("validationBar").innerHTML = chips.join("");
 }
 
-function renderTable(data) {
-  const cols = displayCols().length ? displayCols() : headers;
-  const stats = validateRows(data);
-  const { issues } = stats;
+function compareVals(a, b) {
+  if (a instanceof Date && b instanceof Date) return a - b;
+  const na = typeof a === "number" ? a : parseFloat(a);
+  const nb = typeof b === "number" ? b : parseFloat(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+  return String(a ?? "").localeCompare(String(b ?? ""), "ar", { numeric: true, sensitivity: "base" });
+}
+
+function tableDataset() {
+  const base = filteredRows();
+  const stats = validateRows(base);
   const onlyInvalid = document.getElementById("onlyInvalid").checked;
-  const invalidCount = issues.filter((i) => i.rowInvalid).length;
-  renderValidation(stats, invalidCount, data.length);
+  const cfCol = document.getElementById("colFilterCol").value;
+  const cfVal = document.getElementById("colFilterVal").value.trim().toLowerCase();
+  let items = base.map((r, idx) => ({ r, issue: stats.issues[idx] || { cells: {}, dup: false, rowInvalid: false } }));
+  if (onlyInvalid) items = items.filter((x) => x.issue.rowInvalid);
+  if (cfVal) {
+    items = items.filter((x) => {
+      const cols = cfCol ? [cfCol] : headers;
+      return cols.some((h) => String(x.r[h] ?? "").toLowerCase().includes(cfVal));
+    });
+  }
+  const sCol = document.getElementById("sortCol").value || sortState.col;
+  const sDir = document.getElementById("sortDir").value || sortState.dir;
+  if (sCol) {
+    items.sort((a, b) => {
+      const c = compareVals(a.r[sCol], b.r[sCol]);
+      return sDir === "desc" ? -c : c;
+    });
+  }
+  return { items, stats, totalBase: base.length };
+}
+
+function renderTable() {
+  const { items, stats, totalBase } = tableDataset();
+  const data = items.map((x) => x.r);
+  const cols = displayCols(data);
+  const invalidCount = stats.issues.filter((i) => i.rowInvalid).length;
+  renderValidation(stats, invalidCount, totalBase);
   renderRulesList();
 
+  const size = Number(document.getElementById("pageSize").value) || 50;
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  if (tablePage > pages) tablePage = pages;
+  const start = (tablePage - 1) * size;
+  const pageItems = items.slice(start, start + size);
+  document.getElementById("pageInfo").textContent = `صفحة ${tablePage} من ${pages} — ${items.length} صف`;
+
+  const table = document.getElementById("dataTable");
+  table.classList.toggle("compact", document.getElementById("compactTable").checked);
   if (!cols.length) {
-    document.getElementById("dataTable").innerHTML = "<tr><td>لا توجد أعمدة للعرض</td></tr>";
+    table.innerHTML = "<tr><td>لا توجد أعمدة للعرض</td></tr>";
     return;
   }
-  const thead = `<tr>${cols.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
-  const visible = [];
-  data.forEach((r, idx) => {
-    const issue = issues[idx] || { cells: {}, dup: false, rowInvalid: false };
-    if (onlyInvalid && !issue.rowInvalid) return;
-    if (visible.length >= 300) return;
-    visible.push({ r, issue });
-  });
-  const tbody = visible.length
-    ? visible.map(({ r, issue }) => {
+  const thead = `<tr>${cols.map((h) => `<th class="sortable" data-col="${escapeHtml(h)}">${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const tbody = pageItems.length
+    ? pageItems.map(({ r, issue }) => {
         const tds = cols.map((h) => {
           const kind = issue.cells[h] || (issue.dup ? "dup" : "");
           return `<td class="${kind}">${escapeHtml(formatCell(r[h]))}</td>`;
@@ -506,15 +608,45 @@ function renderTable(data) {
         return `<tr class="${issue.rowInvalid ? "invalid" : ""}">${tds}</tr>`;
       }).join("")
     : `<tr><td colspan="${cols.length}">لا توجد صفوف مطابقة للفلتر الحالي</td></tr>`;
-  document.getElementById("dataTable").innerHTML = thead + tbody;
+  table.innerHTML = thead + tbody;
+  table.querySelectorAll("th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const col = th.getAttribute("data-col");
+      const sel = document.getElementById("sortCol");
+      const dir = document.getElementById("sortDir");
+      if (sel.value === col) dir.value = dir.value === "asc" ? "desc" : "asc";
+      else sel.value = col;
+      tablePage = 1;
+      renderTableOnly();
+    });
+  });
 }
 
-function renderAll() {
-  const data = filteredRows();
-  renderKpis(data);
-  try { renderCharts(data); } catch (err) { console.error(err); }
-  try { renderTable(data); } catch (err) {
+function renderTableOnly() {
+  try { renderTable(); } catch (err) {
     console.error(err);
     document.getElementById("dataTable").innerHTML = `<tr><td>${escapeHtml(err.message)}</td></tr>`;
   }
+}
+
+function exportCsv() {
+  const { items } = tableDataset();
+  const cols = displayCols(items.map((x) => x.r));
+  const lines = [cols.join(",")].concat(
+    items.map(({ r }) => cols.map((h) => `"${String(formatCell(r[h])).replace(/"/g, '""')}"`).join(","))
+  );
+  const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "data.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function renderAll() {
+  tablePage = 1;
+  const data = filteredRows();
+  renderKpis(data);
+  try { renderCharts(data); } catch (err) { console.error(err); }
+  renderTableOnly();
 }

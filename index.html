@@ -125,7 +125,50 @@
           </div>
           <div id="rulesList" class="rules-list"></div>
         </div>
-        <div class="validation-bar" id="validationBar"></div>
+        <div class="table-controls">
+          <label>ترتيب حسب
+            <select id="sortCol"></select>
+          </label>
+          <label>الاتجاه
+            <select id="sortDir">
+              <option value="asc">تصاعدي</option>
+              <option value="desc">تنازلي</option>
+            </select>
+          </label>
+          <label>فلتر عمود
+            <select id="colFilterCol"></select>
+          </label>
+          <label>قيمة الفلتر
+            <input id="colFilterVal" type="search" placeholder="يحتوي على..." />
+          </label>
+          <label>صفوف الصفحة
+            <select id="pageSize">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <label class="inline-check">
+            <input type="checkbox" id="hideEmptyCols" />
+            إخفاء الأعمدة الفارغة
+          </label>
+          <label class="inline-check">
+            <input type="checkbox" id="compactTable" />
+            عرض مضغوط
+          </label>
+          <button type="button" id="exportCsv" class="ghost-btn">تصدير CSV</button>
+        </div>
+        <details class="col-picker">
+          <summary>إظهار / إخفاء الأعمدة</summary>
+          <div id="colChecks" class="col-checks"></div>
+        </details>
+        <div class="pager">
+          <button type="button" class="ghost-btn" id="prevPage">السابق</button>
+          <span id="pageInfo">صفحة 1</span>
+          <button type="button" class="ghost-btn" id="nextPage">التالي</button>
+        </div>
         <div class="table-wrap">
           <table id="dataTable"></table>
         </div>
