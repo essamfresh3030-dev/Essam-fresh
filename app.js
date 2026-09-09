@@ -58,6 +58,15 @@ headerRowSelect.addEventListener("change", applyHeaderRow);
   el.addEventListener("input", renderAll)
 );
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
+document.getElementById("onlySelectedCols").addEventListener("change", renderAll);
+
+function escapeHtml(v) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function cellPreview(v) {
   if (v instanceof Date) return v.toLocaleDateString("ar-EG");
@@ -94,7 +103,9 @@ function fillHeaderRowSelect(preferred) {
 
 function applyHeaderRow() {
   const idx = Number(headerRowSelect.value) || 0;
-  const headerCells = rawGrid[idx] || [];
+  const maxLen = rawGrid.reduce((m, line) => Math.max(m, (line || []).length), 0);
+  const headerCells = [...(rawGrid[idx] || [])];
+  while (headerCells.length < maxLen) headerCells.push("");
   const used = new Map();
   headers = headerCells.map((h, i) => {
     let name = String(h ?? "").trim() || `عمود ${i + 1}`;
@@ -105,10 +116,10 @@ function applyHeaderRow() {
   rows = rawGrid.slice(idx + 1).map((line) => {
     const obj = {};
     headers.forEach((h, i) => {
-      obj[h] = line[i] ?? "";
+      obj[h] = line && line[i] !== undefined ? line[i] : "";
     });
     return obj;
-  }).filter((r) => headers.some((h) => r[h] !== "" && r[h] != null));
+  });
   document.getElementById("rowCount").textContent = `${rows.length} صف`;
   document.getElementById("colCount").textContent = `${headers.length} عمود`;
   fillSelects();
@@ -117,7 +128,8 @@ function applyHeaderRow() {
 
 function useSheet(name, resetHeader = true) {
   const sheet = workbook.Sheets[name];
-  rawGrid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true, blankrows: false });
+  rawGrid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true, blankrows: true });
+  if (!rawGrid.length) rawGrid = [[]];
   const preferred = resetHeader ? guessHeaderRow(rawGrid) : Number(headerRowSelect.value) || 0;
   fillHeaderRowSelect(preferred);
   applyHeaderRow();
@@ -138,15 +150,17 @@ function isDateCol(h) {
 }
 
 function fillSelects() {
+  const prev = { cat: catCol.value, val: valCol.value, date: dateCol.value };
   const nums = headers.filter(isNumericCol);
   const cats = headers.filter((h) => !isNumericCol(h));
   const dates = headers.filter(isDateCol);
-  catCol.innerHTML = headers.map((h) => `<option>${h}</option>`).join("");
-  valCol.innerHTML = (nums.length ? nums : headers).map((h) => `<option>${h}</option>`).join("");
-  dateCol.innerHTML = `<option value="">بدون</option>` + headers.map((h) => `<option>${h}</option>`).join("");
-  if (cats[0]) catCol.value = cats[0];
-  if (nums[0]) valCol.value = nums[0];
-  if (dates[0]) dateCol.value = dates[0];
+  const opts = headers.map((h) => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
+  catCol.innerHTML = opts;
+  valCol.innerHTML = (nums.length ? nums : headers).map((h) => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
+  dateCol.innerHTML = `<option value="">بدون</option>` + opts;
+  catCol.value = headers.includes(prev.cat) ? prev.cat : (cats[0] || headers[0] || "");
+  valCol.value = (nums.includes(prev.val) || headers.includes(prev.val)) ? prev.val : (nums[0] || headers[0] || "");
+  dateCol.value = headers.includes(prev.date) ? prev.date : (dates[0] || "");
 }
 
 function num(v) {
@@ -193,22 +207,49 @@ function destroyCharts() {
   Object.values(charts).forEach((c) => c && c.destroy());
 }
 
+const chartBase = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { maxRotation: 40, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } } },
+    y: { ticks: { maxTicksLimit: 5, font: { size: 10 } } },
+  },
+};
+
+function displayCols() {
+  const selected = [catCol.value, valCol.value, dateCol.value].filter((h) => h && headers.includes(h));
+  const unique = [...new Set(selected)];
+  if (document.getElementById("onlySelectedCols").checked && unique.length) return unique;
+  return headers;
+}
+
+function formatCell(v) {
+  if (v instanceof Date && !isNaN(v)) return v.toLocaleDateString("ar-EG");
+  if (v == null) return "";
+  return String(v);
+}
+
 function renderCharts(data) {
   destroyCharts();
   const grouped = groupSum(data, catCol.value, valCol.value);
-  const labels = grouped.map((x) => x[0]);
-  const vals = grouped.map((x) => x[1]);
+  const labels = grouped.length ? grouped.map((x) => x[0]) : ["لا توجد بيانات"];
+  const vals = grouped.length ? grouped.map((x) => x[1]) : [0];
   const colors = labels.map((_, i) => `hsl(${(i * 37) % 360} 70% 55%)`);
 
   charts.bar = new Chart(document.getElementById("barChart"), {
     type: "bar",
     data: { labels, datasets: [{ label: valCol.value, data: vals, backgroundColor: colors }] },
-    options: { responsive: true, plugins: { legend: { display: false } } },
+    options: { ...chartBase, plugins: { legend: { display: false } } },
   });
   charts.pie = new Chart(document.getElementById("pieChart"), {
     type: "doughnut",
     data: { labels, datasets: [{ data: vals, backgroundColor: colors }] },
-    options: { responsive: true },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 8, font: { size: 10 } } } },
+    },
   });
 
   const dCol = dateCol.value;

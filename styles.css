@@ -67,7 +67,8 @@ select, input {
 .chart-box.pie { height: clamp(140px, 22vh, 200px); }
 .chart-box.line { height: clamp(120px, 18vh, 180px); }
 .chart-box canvas { max-width: 100%; }
-.data-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hint { margin: 0 0 8px; color: var(--muted); font-size: .85rem; }
+th.active-col { color: var(--accent); }
 .inline-check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; }
 .validation-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .vchip {
