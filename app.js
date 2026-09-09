@@ -8,12 +8,14 @@ const valCol = document.getElementById("valCol");
 const dateCol = document.getElementById("dateCol");
 const search = document.getElementById("search");
 const headerRowSelect = document.getElementById("headerRowSelect");
+const catFilter = document.getElementById("catFilter");
 
 let workbook = null;
 let rawGrid = [];
 let rows = [];
 let headers = [];
 let charts = { bar: null, pie: null, line: null };
+let colRules = {};
 
 dropzone.addEventListener("click", () => fileInput.click());
 ["dragover", "dragenter"].forEach((ev) => {
@@ -54,9 +56,10 @@ function loadFile(file) {
 
 sheetSelect.addEventListener("change", () => useSheet(sheetSelect.value, true));
 headerRowSelect.addEventListener("change", applyHeaderRow);
-[catCol, valCol, dateCol, search].forEach((el) =>
+[catCol, valCol, dateCol, search, catFilter].forEach((el) =>
   el.addEventListener("input", renderAll)
 );
+catCol.addEventListener("change", fillCatFilter);
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
 document.getElementById("onlySelectedCols").addEventListener("change", renderAll);
 document.getElementById("applyRule").addEventListener("click", applyCurrentRule);
@@ -161,25 +164,63 @@ function fillSelects() {
   const nums = headers.filter(isNumericCol);
   const cats = headers.filter((h) => !isNumericCol(h));
   const dates = headers.filter(isDateCol);
-  const opts = headers.map((h) => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
-  catCol.innerHTML = opts;
-  valCol.innerHTML = (nums.length ? nums : headers).map((h) => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join("");
-  dateCol.innerHTML = `<option value="">بدون</option>` + opts;
+  function fill(sel, list, extra) {
+    sel.innerHTML = "";
+    (extra || []).forEach(([value, label]) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    });
+    list.forEach((h) => {
+      const o = document.createElement("option");
+      o.value = h;
+      o.textContent = h;
+      sel.appendChild(o);
+    });
+  }
+  fill(catCol, headers);
+  fill(valCol, nums.length ? nums : headers);
+  fill(dateCol, headers, [["", "بدون"]]);
   catCol.value = headers.includes(prev.cat) ? prev.cat : (cats[0] || headers[0] || "");
-  valCol.value = (nums.includes(prev.val) || headers.includes(prev.val)) ? prev.val : (nums[0] || headers[0] || "");
+  valCol.value = headers.includes(prev.val) ? prev.val : (nums[0] || headers[0] || "");
   dateCol.value = headers.includes(prev.date) ? prev.date : (dates[0] || "");
+  fillCatFilter();
+}
+
+function fillCatFilter() {
+  const prev = catFilter.value;
+  const col = catCol.value;
+  const values = [...new Set(rows.map((r) => String(r[col] ?? "").trim()).filter((v) => v !== ""))].slice(0, 400);
+  catFilter.innerHTML = "";
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "الكل";
+  catFilter.appendChild(all);
+  values.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    catFilter.appendChild(o);
+  });
+  catFilter.value = values.includes(prev) ? prev : "";
+}
+
+function filteredRows() {
+  const q = search.value.trim().toLowerCase();
+  const fv = catFilter.value;
+  const col = catCol.value;
+  return rows.filter((r) => {
+    if (fv && String(r[col] ?? "").trim() !== fv) return false;
+    if (!q) return true;
+    return headers.some((h) => String(r[h] ?? "").toLowerCase().includes(q));
+  });
 }
 
 function num(v) {
   if (typeof v === "number") return v;
   const n = parseFloat(String(v).replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
-}
-
-function filteredRows() {
-  const q = search.value.trim().toLowerCase();
-  if (!q) return rows;
-  return rows.filter((r) => headers.some((h) => String(r[h]).toLowerCase().includes(q)));
 }
 
 function groupSum(data, key, val) {
@@ -454,43 +495,52 @@ function renderValidation(stats, invalidCount, total) {
     `<span class="vchip ${stats.emptyCells ? "warn" : "ok"}">خلايا فارغة: ${stats.emptyCells}</span>`,
     `<span class="vchip ${stats.badNums ? "err" : "ok"}">أرقام غير صالحة: ${stats.badNums}</span>`,
     `<span class="vchip ${stats.badDates ? "err" : "ok"}">تواريخ غير صالحة: ${stats.badDates}</span>`,
+    `<span class="vchip ${stats.badRange ? "err" : "ok"}">خارج المدى: ${stats.badRange || 0}</span>`,
+    `<span class="vchip ${stats.badList ? "err" : "ok"}">خارج القائمة: ${stats.badList || 0}</span>`,
     `<span class="vchip ${stats.dups ? "warn" : "ok"}">صفوف مكررة: ${stats.dups}</span>`,
   ];
   document.getElementById("validationBar").innerHTML = chips.join("");
 }
 
 function renderTable(data) {
-  const { issues, emptyCells, badNums, badDates, dups } = validateRows(data);
+  const cols = displayCols().length ? displayCols() : headers;
+  const stats = validateRows(data);
+  const { issues } = stats;
   const onlyInvalid = document.getElementById("onlyInvalid").checked;
   const invalidCount = issues.filter((i) => i.rowInvalid).length;
-  renderValidation({ emptyCells, badNums, badDates, dups }, invalidCount, data.length);
+  renderValidation(stats, invalidCount, data.length);
+  renderRulesList();
 
-  const thead = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
-  let shown = 0;
-  const tbody = data
-    .map((r, idx) => {
-      const issue = issues[idx];
-      if (onlyInvalid && !issue.rowInvalid) return "";
-      if (shown >= 200) return "";
-      shown += 1;
-      const cls = issue.rowInvalid ? "invalid" : "";
-      const tds = headers
-        .map((h) => {
+  if (!cols.length) {
+    document.getElementById("dataTable").innerHTML = "<thead><tr><th>لا توجد أعمدة</th></tr></thead>";
+    return;
+  }
+  const thead = `<tr>${cols.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const visible = [];
+  data.forEach((r, idx) => {
+    const issue = issues[idx] || { cells: {}, dup: false, rowInvalid: false };
+    if (onlyInvalid && !issue.rowInvalid) return;
+    if (visible.length >= 300) return;
+    visible.push({ r, issue });
+  });
+  const tbody = visible.length
+    ? visible.map(({ r, issue }) => {
+        const tds = cols.map((h) => {
           const kind = issue.cells[h] || (issue.dup ? "dup" : "");
-          const val = r[h] instanceof Date ? r[h].toLocaleDateString("ar-EG") : r[h];
-          const title = kind === "empty" ? "خلية فارغة" : kind === "bad-num" ? "قيمة رقمية غير صالحة" : kind === "bad-date" ? "تاريخ غير صالح" : issue.dup ? "صف مكرر" : "";
-          return `<td class="${kind}" title="${title}">${val ?? ""}</td>`;
-        })
-        .join("");
-      return `<tr class="${cls}">${tds}</tr>`;
-    })
-    .join("");
+          return `<td class="${kind}">${escapeHtml(formatCell(r[h]))}</td>`;
+        }).join("");
+        return `<tr class="${issue.rowInvalid ? "invalid" : ""}">${tds}</tr>`;
+      }).join("")
+    : `<tr><td colspan="${cols.length}">لا توجد صفوف بعد الفلتر — جرّب فلتر التصنيف = الكل أو ألغِ «غير الصالحة فقط»</td></tr>`;
   document.getElementById("dataTable").innerHTML = thead + tbody;
 }
 
 function renderAll() {
   const data = filteredRows();
   renderKpis(data);
-  renderCharts(data);
-  renderTable(data);
+  try { renderCharts(data); } catch (err) { console.error(err); }
+  try { renderTable(data); } catch (err) {
+    console.error(err);
+    document.getElementById("dataTable").innerHTML = `<tr><td>${escapeHtml(err.message)}</td></tr>`;
+  }
 }
