@@ -59,15 +59,68 @@ headerRowSelect.addEventListener("change", applyHeaderRow);
 );
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
 
-function useSheet(name) {
-  const sheet = workbook.Sheets[name];
-  const json = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
-  rows = json;
-  headers = json.length ? Object.keys(json[0]) : [];
+function cellPreview(v) {
+  if (v instanceof Date) return v.toLocaleDateString("ar-EG");
+  const s = String(v ?? "").replace(/\s+/g, " ").trim();
+  return s.length > 18 ? s.slice(0, 18) + "…" : s;
+}
+
+function guessHeaderRow(grid) {
+  let best = 0;
+  let bestScore = -1;
+  const limit = Math.min(grid.length, 30);
+  for (let i = 0; i < limit; i++) {
+    const row = grid[i] || [];
+    const texts = row.filter((v) => v !== "" && v != null && typeof v !== "number" && !(v instanceof Date));
+    const nums = row.filter((v) => typeof v === "number");
+    const filled = row.filter((v) => v !== "" && v != null).length;
+    const score = texts.length * 3 + filled - nums.length * 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function fillHeaderRowSelect(preferred) {
+  const limit = Math.min(rawGrid.length, 50);
+  headerRowSelect.innerHTML = Array.from({ length: limit }, (_, i) => {
+    const preview = (rawGrid[i] || []).slice(0, 4).map(cellPreview).filter(Boolean).join(" | ");
+    return `<option value="${i}">صف ${i + 1}${preview ? " — " + preview : ""}</option>`;
+  }).join("");
+  headerRowSelect.value = String(Math.min(preferred, Math.max(limit - 1, 0)));
+}
+
+function applyHeaderRow() {
+  const idx = Number(headerRowSelect.value) || 0;
+  const headerCells = rawGrid[idx] || [];
+  const used = new Map();
+  headers = headerCells.map((h, i) => {
+    let name = String(h ?? "").trim() || `عمود ${i + 1}`;
+    const n = (used.get(name) || 0) + 1;
+    used.set(name, n);
+    return n > 1 ? `${name} (${n})` : name;
+  });
+  rows = rawGrid.slice(idx + 1).map((line) => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      obj[h] = line[i] ?? "";
+    });
+    return obj;
+  }).filter((r) => headers.some((h) => r[h] !== "" && r[h] != null));
   document.getElementById("rowCount").textContent = `${rows.length} صف`;
   document.getElementById("colCount").textContent = `${headers.length} عمود`;
   fillSelects();
   renderAll();
+}
+
+function useSheet(name, resetHeader = true) {
+  const sheet = workbook.Sheets[name];
+  rawGrid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true, blankrows: false });
+  const preferred = resetHeader ? guessHeaderRow(rawGrid) : Number(headerRowSelect.value) || 0;
+  fillHeaderRowSelect(preferred);
+  applyHeaderRow();
 }
 
 function isNumericCol(h) {
