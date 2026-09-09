@@ -62,7 +62,17 @@ headerRowSelect.addEventListener("change", applyHeaderRow);
   el.addEventListener("input", renderAll)
 );
 document.getElementById("onlyInvalid").addEventListener("change", renderAll);
-document.getElementById("onlySelectedCols").addEventListener("change", renderAll);
+document.getElementById("onlySelectedCols").addEventListener("change", () => {
+  const only = document.getElementById("onlySelectedCols").checked;
+  const must = new Set(requestedCols());
+  if (only) {
+    hiddenCols = new Set(headers.filter((h) => !must.has(h)));
+  } else {
+    hiddenCols = new Set();
+  }
+  fillTableControls();
+  renderTableOnly();
+});
 document.getElementById("applyRule").addEventListener("click", applyCurrentRule);
 document.getElementById("clearRules").addEventListener("click", () => {
   colRules = {};
@@ -303,15 +313,28 @@ function fillTableControls() {
   });
 }
 
+function requestedCols() {
+  return [catCol.value, valCol.value, dateCol.value,
+    document.getElementById("sortCol")?.value,
+    document.getElementById("colFilterCol")?.value,
+    document.getElementById("ruleCol")?.value]
+    .filter((h) => h && headers.includes(h));
+}
+
 function displayCols(data) {
-  const selected = [catCol.value, valCol.value, dateCol.value].filter((h) => h && headers.includes(h));
-  const unique = [...new Set(selected)];
-  let cols = document.getElementById("onlySelectedCols").checked && unique.length ? unique : headers.slice();
-  cols = cols.filter((h) => !hiddenCols.has(h));
+  const must = [...new Set(requestedCols())];
+  must.forEach((h) => hiddenCols.delete(h));
+  let cols = headers.filter((h) => !hiddenCols.has(h));
+  must.slice().reverse().forEach((h) => {
+    const i = cols.indexOf(h);
+    if (i >= 0) cols.splice(i, 1);
+    cols.unshift(h);
+  });
   if (document.getElementById("hideEmptyCols")?.checked && data) {
-    cols = cols.filter((h) => data.some((r) => !isEmpty(r[h])));
+    const keep = new Set(must);
+    cols = cols.filter((h) => keep.has(h) || data.some((r) => !isEmpty(r[h])));
   }
-  return cols.length ? cols : headers.slice(0, 1);
+  return cols.length ? cols : headers.slice();
 }
 
 function formatCell(v) {
